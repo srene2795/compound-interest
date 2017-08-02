@@ -62,6 +62,11 @@ class Chart extends Component {
 
   createChart() {
     const lineColor = '#71a0ae';
+    var foWidth = 300;
+    var xoffset = 50,
+      yoffset = 20;
+    var tip = { w: 3 / 4 * xoffset, h: yoffset };
+
     const {
       data,
       yLabel,
@@ -239,9 +244,7 @@ class Chart extends Component {
 
     const lineData = data.map(d => {
       return {
-        data: d3.zip(d.x, d.y),
-        tooltipLabel: d.hoverTxt,
-        label: d.label
+        data: d3.zip(d.x, d.y)
       };
     });
     let path = chart.selectAll('path.line').data(lineData, (d, i) => i);
@@ -262,7 +265,6 @@ class Chart extends Component {
     path
       .append('text')
       .datum(d => ({
-        label: d.label,
         value: d.data[d.data.length - 1]
       }))
       .attr(
@@ -270,8 +272,7 @@ class Chart extends Component {
         d => 'translate(' + xScale(d.value[0]) + ',' + yScale(d.value[1]) + ')'
       )
       .attr('x', 3)
-      .attr('dy', '.5em')
-      .text(d => d.label);
+      .attr('dy', '.5em');
 
     g.call(zoom);
 
@@ -293,33 +294,27 @@ class Chart extends Component {
 
     let mpl = overlay.selectAll('.mouse-per-line').data(
       data.map(d => ({
-        data: d3.zip(d.x, d.y),
-        tooltipLabelFn: d.hoverTxt,
-        label: d.label
+        data: d3.zip(d.x, d.y)
       }))
     );
 
     mpl = mpl.enter().append('g').classed('mouse-per-line', true).merge(mpl);
 
-    mpl
-      .append('circle')
-      .attr('r', 7)
-      .style('stroke', lineColor)
-      .style('fill', 'none')
-      .style('stroke-width', '1px')
-      .style('opacity', 0);
-    mpl
-      .append('text')
-      .attr('font-size', 15)
-      .attr('letter-spacing', '.1rem')
-      .attr('stroke', '#657B83')
-      .attr('transform', 'translate(10, 3)');
+    function setAttributes(elem, obj) {
+      for (var prop in obj) {
+        if (obj.hasOwnProperty(prop)) {
+          elem.setAttribute(prop, obj[prop]);
+        }
+      }
+    }
 
     function mousemove() {
+      const elem = this.parentElement.parentElement.parentElement;
+      var foreign = elem.getElementsByTagName('foreignObject');
+
       const mouse = d3.mouse(this);
       const transform = d3.zoomTransform(g.node());
       const x0 = transform.rescaleX(xScale).invert(mouse[0]);
-
       g.select('.mouse-line').attr('d', function() {
         var d = 'M' + mouse[0] + ',' + height;
         d += ' ' + mouse[0] + ',' + 0;
@@ -330,17 +325,14 @@ class Chart extends Component {
         const bisect = d3.bisector(d => d[0]).left;
         const idx = bisect(d.data, x0);
         const y = d.data[idx] && d.data[idx][1];
+        let labelText = '';
+        let x1 = x0 && d3.format(xLabelFormat)(x0);
+        let y1 = y && y.toFixed(2);
 
-        let labelText = tooltipLabel;
-        if (d.tooltipLabelFn && x0 && y) {
-          labelText = d.tooltipLabelFn(
-            x0 && d3.format(xLabelFormat)(x0),
-            y.toFixed(2)
-          );
-        }
-        d3.select(this).select('text').text(labelText);
+        if (x1 && y1) labelText = y1 + 'years ,for ' + x1 + 'interest rate';
 
-        return 'translate(' + margin.left + ',' + i * 15 + ')';
+        var p = foreign[i].childNodes[0].childNodes[0].childNodes[0];
+        p.innerHTML = labelText;
       });
     }
 
@@ -351,6 +343,27 @@ class Chart extends Component {
       .attr('fill', 'none')
       .attr('pointer-events', 'all')
       .on('mouseover', () => {
+        g.selectAll('.mouse-per-line').attr('transform', function(d, i) {
+          var svg_elem = this.parentElement.parentElement.parentElement;
+          var foreign = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'foreignObject'
+          );
+          setAttributes(foreign, {
+            x: xoffset,
+            y: i * yoffset,
+            width: foWidth,
+            class: 'svg-tooltip'
+          });
+          svg_elem.appendChild(foreign);
+          var xhtml_div = document.createElement('xhtml:div');
+          var div = document.createElement('div');
+          foreign.appendChild(xhtml_div);
+          xhtml_div.appendChild(div);
+          div.setAttribute('class', 'tooltip');
+          var p = document.createElement('p');
+          div.appendChild(p);
+        });
         this.mouseIn = true;
         g.select('.mouse-line').style('opacity', '1');
         d3.selectAll('.mouse-per-line circle').style('opacity', '1');
@@ -358,6 +371,13 @@ class Chart extends Component {
       })
       .on('mouseout', () => {
         this.mouseIn = false;
+        var objects = this.node.getElementsByTagName('foreignObject');
+        for (var index in objects) {
+          if (objects[0]) {
+            var parent = objects[0].parentElement;
+            parent.removeChild(objects[0]);
+          }
+        }
         g.select('.mouse-line').style('opacity', '0');
         d3.selectAll('.mouse-per-line circle').style('opacity', '0');
         d3.selectAll('.mouse-per-line text').style('opacity', '0');
