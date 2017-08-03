@@ -1,5 +1,16 @@
 import React, { Component } from 'react';
 import * as d3 from 'd3';
+import ReactDOM from 'react-dom';
+
+const HtmlHoverTip = props => {
+  return (
+    <div className="tooltip">
+      <span style={{ fontSize: 14 }}>
+        &#9675; {props.text}
+      </span>
+    </div>
+  );
+};
 
 let id = 1;
 
@@ -294,7 +305,9 @@ class Chart extends Component {
 
     let mpl = overlay.selectAll('.mouse-per-line').data(
       data.map(d => ({
-        data: d3.zip(d.x, d.y)
+        data: d3.zip(d.x, d.y),
+        tooltipLabelFn: d.hoverTxt,
+        label: d.label
       }))
     );
 
@@ -309,9 +322,7 @@ class Chart extends Component {
     }
 
     function mousemove() {
-      const elem = this.parentElement.parentElement.parentElement;
-      var foreign = elem.getElementsByTagName('foreignObject');
-
+      const foreign = svg.selectAll('foreignObject')._groups[0];
       const mouse = d3.mouse(this);
       const transform = d3.zoomTransform(g.node());
       const x0 = transform.rescaleX(xScale).invert(mouse[0]);
@@ -321,18 +332,21 @@ class Chart extends Component {
         return d;
       });
 
-      g.selectAll('.mouse-per-line').attr('transform', function(d, i) {
+      g.selectAll('.mouse-per-line').each(function(d, i) {
         const bisect = d3.bisector(d => d[0]).left;
         const idx = bisect(d.data, x0);
         const y = d.data[idx] && d.data[idx][1];
         let labelText = '';
         let x1 = x0 && d3.format(xLabelFormat)(x0);
         let y1 = y && y.toFixed(2);
+        if (d.tooltipLabelFn && x0 && y) {
+          labelText = d.tooltipLabelFn(
+            x0 && d3.format(xLabelFormat)(x0),
+            y.toFixed(2)
+          );
+        }
 
-        if (x1 && y1) labelText = y1 + 'years ,for ' + x1 + 'interest rate';
-
-        var p = foreign[i].childNodes[0].childNodes[0].childNodes[0];
-        p.innerHTML = labelText;
+        ReactDOM.render(<HtmlHoverTip text={labelText} />, foreign[i]);
       });
     }
 
@@ -343,44 +357,21 @@ class Chart extends Component {
       .attr('fill', 'none')
       .attr('pointer-events', 'all')
       .on('mouseover', () => {
-        g.selectAll('.mouse-per-line').attr('transform', function(d, i) {
-          var svg_elem = this.parentElement.parentElement.parentElement;
-          var foreign = document.createElementNS(
-            'http://www.w3.org/2000/svg',
-            'foreignObject'
-          );
-          setAttributes(foreign, {
-            x: xoffset,
-            y: i * yoffset,
-            width: foWidth,
-            class: 'svg-tooltip'
-          });
-          svg_elem.appendChild(foreign);
-          var xhtml_div = document.createElement('xhtml:div');
-          var div = document.createElement('div');
-          foreign.appendChild(xhtml_div);
-          xhtml_div.appendChild(div);
-          div.setAttribute('class', 'tooltip');
-          var p = document.createElement('p');
-          div.appendChild(p);
+        g.selectAll('.mouse-per-line').each(function(d, i) {
+          svg
+            .append('foreignObject')
+            .attr('x', xoffset)
+            .attr('y', i * yoffset)
+            .attr('width', foWidth)
+            .attr('class', 'svg-tooltip');
         });
         this.mouseIn = true;
         g.select('.mouse-line').style('opacity', '1');
-        d3.selectAll('.mouse-per-line circle').style('opacity', '1');
-        d3.selectAll('.mouse-per-line text').style('opacity', '1');
       })
       .on('mouseout', () => {
         this.mouseIn = false;
-        var objects = this.node.getElementsByTagName('foreignObject');
-        for (var index in objects) {
-          if (objects[0]) {
-            var parent = objects[0].parentElement;
-            parent.removeChild(objects[0]);
-          }
-        }
+        svg.selectAll('foreignObject').remove();
         g.select('.mouse-line').style('opacity', '0');
-        d3.selectAll('.mouse-per-line circle').style('opacity', '0');
-        d3.selectAll('.mouse-per-line text').style('opacity', '0');
       })
       .on('mousemove', mousemove);
   }
